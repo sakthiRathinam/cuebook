@@ -1,0 +1,67 @@
+version: '3.7'
+
+services:
+  cuebookdb:
+    container_name: cuebook-db
+    image: postgres
+    restart: on-failure
+#    restart: always
+    env_file:
+      - ./env/postgres.env
+    ports:
+      - "1436:5432"
+    volumes:
+      - ./data/db:/var/lib/postgresql/data
+  cuebook:
+    container_name: cuebook
+    build:
+      context: .
+    env_file:
+      - ./env/django.env
+    command: bash -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - .:/app
+    ports:
+      - "8001:8000"
+    restart: always
+    depends_on:
+      - cuebookdb
+      - cuebookdbadmin
+#    command: ./start-reload.sh
+    # tty: true
+  cuebookdbadmin:
+    container_name: pgadmin-cuebook
+    image: dpage/pgadmin4
+    env_file:
+      - ./env/pgadmin.env
+    ports:
+      - "5057:80"
+    depends_on:
+      - cuebookdb
+  redis:
+    image: "redis:alpine"
+  celery:
+    build:
+      context: .
+    command: celery -A coresingle worker --loglevel=INFO
+    env_file:
+      - ./env/django.env
+    volumes:
+      - .:/app
+    depends_on:
+      - cuebook
+      - redis
+  celerybeat:
+    build:
+      context: .
+    command: celery -A coresingle beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    env_file:
+      - ./env/django.env
+    volumes:
+      - .:/app
+    depends_on:
+      - cuebook
+      - redis
+      - celery
+
+  
